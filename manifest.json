@@ -22,8 +22,8 @@
         "https://www.parkrun.ie/*",
         "https://www.parkrun.it/*",
         "https://www.parkrun.jp/*",
-        "http://www.parkrun.lt/*",
-        "http://www.parkrun.my/*",
+        "https://www.parkrun.lt/*",
+        "https://www.parkrun.my/*",
         "https://www.parkrun.co.nl/*",
         "https://www.parkrun.co.nz/*",
         "https://www.parkrun.no/*",
@@ -37,6 +37,7 @@
       "run-at": "document_idle",
       "world": "MAIN",
       "js": [
+        "d3.v7.js",
         "script.js"
       ]
     }
