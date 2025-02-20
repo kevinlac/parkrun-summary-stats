@@ -1,6 +1,6 @@
 function timestampToInt(timestamp) {
     let split = timestamp.split(':');
-    if (split.length == 3) {
+    if (split.length === 3) {
         return Number(split[0]) * 3600 + Number(split[1]) * 60 + Number(split[2]);
     } else {
         return Number(split[0]) * 60 + Number(split[1]);
@@ -118,25 +118,20 @@ function createSelect(options, optionsText, defaultOption, defaultValue, id) {
 }
 
 function createHistogram(arrayOfNumbers, binSize) {
-    let hist = document.createElement("div");
-    // "background: linear-gradient(green 40%, red 60%) no-repeat; height: 350px"
-    hist.style = "background-color: white; border:5px; padding-co; height: 400px; width: 100%; display: flex; flex-direction: row; flex-wrap: wrap";
-    let oldMax = arrayOfNumbers[0] - arrayOfNumbers[0] % (binSize * 60);
-    let currMax = oldMax + binSize * 60;
+    // TODO: axis labels
+    let oldMax = arrayOfNumbers[0] - arrayOfNumbers[0] % (binSize * 60); // nearest minute in seconds of fastest person
+    let currMax = oldMax + binSize * 60; // next interval
     let groupCount = 0;
-    let groups = [];
+    let groups = []; // all the data groups [count, start value (seconds), end value (seconds)]
     let max = 0; // highest num of runners in a single bin
+    
     // number of runners in each bin
     for (let i = 0; i < arrayOfNumbers.length; i++) {
-        while (arrayOfNumbers[i] > currMax) {
+        if (arrayOfNumbers[i] > currMax) { // mvoe to next group
             if (groupCount > max) {
                 max = groupCount;
             }
-            if (binSize === 1) {
-                groups.push([String(oldMax / 60), groupCount, oldMax, currMax - 1]);
-            } else {
-                groups.push([intToTimestamp(oldMax) + " - " + intToTimestamp(currMax - 1), groupCount, oldMax, currMax - 1]);
-            }
+            groups.push([groupCount, oldMax, currMax - 1]);
             oldMax = currMax;
             currMax += binSize * 60;
             groupCount = 0;
@@ -148,60 +143,167 @@ function createHistogram(arrayOfNumbers, binSize) {
         if (groupCount > max) {
             max = groupCount;
         }
-        if (binSize === 1) {
-            groups.push([String(oldMax / 60), groupCount, oldMax, currMax - 1]);
-        } else {
-            groups.push([intToTimestamp(oldMax) + " - " + intToTimestamp(currMax - 1), groupCount, oldMax, currMax - 1]);
+        groups.push([groupCount, oldMax, currMax - 1]);
+    }
+
+    var svgWidth = document.getElementById("newHist").clientWidth, svgHeight = 500, barPadding = 1;
+    
+    var yAxisHeight = svgHeight - 65;
+    var xAxisWidth = svgWidth - 65;
+    var graphXOffset = 55;
+    var graphYOffset = 25;
+    
+    var barWidth = (xAxisWidth / groups.length);
+
+    // clear old histogram
+    var svg = d3.select('#newHist');
+    svg.selectAll("*").remove();
+
+    // gridlines and y axis
+    var yAxisScale = d3.scaleLinear()
+    .domain([0, max])
+    .range([yAxisHeight, 0]);
+
+    var y_axis = d3.axisLeft().scale(yAxisScale);
+
+    // create y axis
+    svg.append("g")
+    .attr("transform", "translate(" + graphXOffset + ", " + graphYOffset + ")")
+    .call(y_axis);
+
+    // create gridlines
+    svg.selectAll("line.horizontal-grid")
+    .data(yAxisScale.ticks())
+    .enter()
+    .append("line")
+    .attr("class", "horizontal-grid")
+    .attr("y1", function (d) { return yAxisScale(d) + graphYOffset; })
+    .attr("x1", 0 + graphXOffset)
+    .attr("y2", function (d) { return yAxisScale(d) + graphYOffset; })
+    .attr("x2", xAxisWidth + graphXOffset)
+    .style("stroke", "gray")
+    .style("stroke-width", 0.5);
+
+    // custom ticks for x axis by minutes
+    var xTicks = [];
+
+    for (let i = 0; i < groups.length; i++) {
+        xTicks.push(groups[i][1]);
+    }
+    xTicks.push(groups[groups.length - 1][2] + 1); // last tick
+
+    // create x axis
+    var xAxisScale = d3.scaleLinear()
+    .domain([xTicks[0], xTicks[xTicks.length - 1]])
+    .range([0, xAxisWidth]);
+
+    var x_axis = d3.axisBottom().scale(xAxisScale).tickValues(xTicks).tickFormat(function(d,i) {
+        if (i < groups.length) {
+            if (binSize != 1) {
+                return intToTimestamp(groups[i][1]);
+            }
+            return groups[i][1] / 60;
+        }
+        return "";
+    });
+
+    svg.append("g")
+    .attr("transform", "translate(" + graphXOffset + ", " + (yAxisHeight + graphYOffset) + ")")
+    .call(x_axis);
+
+    // axes labels
+    svg.append("text")
+    .attr("class", "x label")
+    .attr("text-anchor", "end")
+    .attr("x", svgWidth / 2)
+    .attr("y", svgHeight - 6)
+    .style("font-size", "10pt")
+    .text("Time ran");
+
+    svg.append("text")
+    .attr("class", "y label")
+    .attr("text-anchor", "end")
+    .attr("y", 6)
+    .attr("dy", ".75em")
+    .attr("x", - svgHeight / 2 + 60)
+    .attr("transform", "rotate(-90)")
+    .style("font-size", "10pt")
+    .text("Number of runners");
+
+    var offsetFromBelow = svgHeight - yAxisHeight;
+
+    // histogram bars
+    var yScale = d3.scaleLinear()
+        .domain([0, max])
+        .range([0, yAxisHeight]);
+    
+    var barChart = svg.selectAll("rect")
+        .data(groups)
+        .enter()
+        .append("rect")
+        .style("fill", "skyblue")
+        .attr("y", function(d) {
+            return svgHeight - yScale(d[0]); 
+        })
+        .attr("height", function(d) { 
+            return yScale(d[0]); 
+        })
+        .attr("width", barWidth - barPadding)
+        .attr("transform", function (d, i) {
+            var translate = [barWidth * i + graphXOffset, graphYOffset - offsetFromBelow]; 
+            return "translate("+ translate +")";
+        })
+        .on('mouseover', function (d, i) {
+            d3.select(this).transition()
+                 .duration('200')
+                 .style("fill", "#73BAD7")
+            d3.select("#histDescription").html(i[0] + (i[0] === 1 ? " person" : " people") + " ran from " + intToTimestamp(i[1]) + " - " + intToTimestamp(i[2]));
+        })
+        .on('mouseout', function (d, i) {
+            d3.select(this).transition()
+                 .duration('200')
+                 .style("fill", "skyblue")
+            d3.select("#histDescription").html("Hover over a column for more details...");
+        });
+}
+
+function updateMilestones(milestonesDictionary, milestones) {
+    // sort by number, junior 10 stays first
+    milestones.sort(function(x, y) {
+        if (typeof(x) == "string") {
+            x = 10;
+        }
+        if (typeof(y) == "string") {
+            y = 10;
+        }
+        return x - y;
+    });
+
+    let milestonesText = document.getElementById("milestonesText");
+    milestonesText.innerHTML = "";
+    let totalMilestones = 0;
+    for (let i = 0; i < milestones.length; i++) {
+        // for some reason, if you do innerText instead of innerHTML, the last space doesnt show up
+        if (milestones[i] in milestonesDictionary) {
+            for (const value of milestonesDictionary[milestones[i]]) {
+                totalMilestones++;
+                let achiever = (value + " (" + String(milestones[i]) + "), ");
+                milestonesText.innerHTML += achiever;
+            }
         }
     }
-    // creating columns
-    for (let i = 0; i < groups.length; i++) {
-        let height = (groups[i][1]/max) * 100;
-        let histColumn = document.createElement("div");
-        histColumn.className = "histColumn";
-        histColumn.style = "height: 100%; width: " + String(100/groups.length) + "%; display:flex; align-items: flex-end";
-        histColumn.style.background = "linear-gradient(0deg, #AAA " + String(height) + "%, #FFF 0%)";
-        histColumn.numberOfRunners = groups[i][1];
-        histColumn.start = groups[i][2];
-        histColumn.end = groups[i][3];
-        histColumn.appendChild(createHeader(groups[i][0], "h6"));
-        hist.appendChild(histColumn);
+
+    if (totalMilestones > 0) {
+        milestonesText.innerHTML = milestonesText.innerHTML.slice(0, -2);
+    } else {
+        milestonesText.innerHTML = "No milestones this week!";
     }
-    return hist;
-}
 
-function updateHistogram(arrayOfNumbers, binSize, histogram) {
-    let newHistogram = createHistogram(arrayOfNumbers, binSize);
-    newHistogram.id = "histogram";
-    histogram.replaceWith(newHistogram);
-    updateHistResponse();
-}
-
-function mouseHoverColumn(column) {
-    let toChange = column.style.background;
-    column.style.background = toChange.replace("rgb(170, 170, 170)", "#777");
-    let updateDescription = document.getElementById("histDescription");
-    updateDescription.innerText = column.numberOfRunners + " runners ran from " + intToTimestamp(column.start) + " - " + intToTimestamp(column.end);
-}
-
-function mouseLeaveColumn(column) {
-    let toChange = column.style.background;
-    column.style.background = toChange.replace("rgb(119, 119, 119)", "#AAA");
-    let updateDescription = document.getElementById("histDescription");
-    updateDescription.innerText = "Hover over a column for more details...";
-}
-
-function updateHistResponse() {
-    let histColumns = document.getElementsByClassName("histColumn");
-    for (let i = 0; i < histColumns.length; i++) {
-        histColumns[i].addEventListener("mouseover", function() {mouseHoverColumn(histColumns[i])});
-        histColumns[i].addEventListener("mouseout", function() {mouseLeaveColumn(histColumns[i])});
-    }
 }
 
 function main() {
     // if not on a results page
-    if (document.getElementsByClassName("js-ResultsTbody").length == 0) {
+    if (document.getElementsByClassName("js-ResultsTbody").length === 0) {
         return;
     }
     
@@ -222,13 +324,7 @@ function main() {
     }
     
     let milestonesDictionary = {
-        10: [],
-        25: [],
-        50: [],
-        100: [],
-        250: [],
-        500: [],
-        1000: []
+        "Junior 10": []
     }
 
     let countPB = 0;
@@ -246,7 +342,7 @@ function main() {
     // get each data point in table
     for (let i = 0; i < rows.length; i++) {
         // if missing a time, gender, or agegroup, we do not add it to the list of data
-        if (rows[i].cells[5].textContent == "\xa0" || rows[i].cells[2].childNodes[0].innerText === "\xa0" || rows[i].cells[3].childNodes[0].innerText === "") {
+        if (rows[i].cells[5].textContent === "\xa0" || rows[i].cells[2].childNodes[0].innerText === "\xa0" || rows[i].cells[3].childNodes[0].innerText === "") {
             countUnknown++;
         } else {
             // attributes
@@ -265,17 +361,20 @@ function main() {
             // add by agegroup
             groupsDictionary[agegroup].push(time);
             // add to milestones
+            if (!(numberOfRuns in milestonesDictionary)) {
+                milestonesDictionary[numberOfRuns] = [];
+            }
+            // junior
             for (let i = 0; i < juniorAges.length; i++) {
                 if (numberOfRuns === 10 && agegroup.indexOf(juniorAges[i]) !== -1) {
-                    milestonesDictionary[numberOfRuns].push(name);
+                    milestonesDictionary["Junior 10"].push(name);
                 }
             }
             if (numberOfRuns === 1) {
                 countFirstEver++;
             }
-            if ([25, 50, 100, 250, 500, 1000].includes(numberOfRuns)) {
-                milestonesDictionary[numberOfRuns].push(name);
-            }
+
+            milestonesDictionary[numberOfRuns].push(name);
 
             // achievements
             if (achievement === firstTimer) {
@@ -308,21 +407,37 @@ function main() {
     newContent.appendChild(createHeader("Milestones:", "h3"))
 
     let milestonesText = document.createElement("p");
-    let totalMilestones = 0;
-    for (const[key, value] of Object.entries(milestonesDictionary)) {
-        for (let i = 0; i < value.length; i++) {
-            totalMilestones++;
-            let achiever = value[i] + " (" + String(key) + "), ";
-            milestonesText.innerText += achiever;
-        }
-    }
-    if (totalMilestones > 0) {
-        milestonesText.innerText = milestonesText.innerText.slice(0, -2);
-    } else {
-        milestonesText.innerText = "No milestones this week!";
-    }
+    milestonesText.id = "milestonesText";
+    let milestones = ["Junior 10", 25, 50, 100, 250, 500, 1000];
+    // let milestones = [72, 53];
+    
     milestonesText.style.margin = "5px";
     newContent.appendChild(milestonesText);
+
+    // custom milestones
+    let customMilestones = document.createElement("div");
+    customMilestones.style = "display: flex; flex-direction: row; flex-wrap: wrap; padding: 5px";
+
+    let customMilestonesText = document.createElement("text");
+    customMilestonesText.innerHTML = "<b>Create a custom milestone: </b>";
+    customMilestonesText.style.margin = "5px";
+    customMilestones.appendChild(customMilestonesText);
+
+    let newMilestone = document.createElement("input");
+    newMilestone.type = "number";
+    newMilestone.id = "newMilestoneValue";
+    newMilestone.min = "1";
+    newMilestone.style.margin = "5px";
+    newMilestone.placeholder = "Enter a number of runs...";
+    customMilestones.appendChild(newMilestone);
+
+    let milestonesButton = document.createElement("button");
+    milestonesButton.style = "outline: none;";
+    milestonesButton.innerText = "Add custom milestone";
+    milestonesButton.style.margin = "5px";
+    milestonesButton.id = "addNewMilestone";
+    customMilestones.appendChild(milestonesButton);
+    newContent.appendChild(customMilestones);
 
     // times by group
     newContent.appendChild(createHeader("Summary Statistics by Group:", "h3"))
@@ -378,26 +493,41 @@ function main() {
     selectors.appendChild(histDescription);
     newContent.appendChild(selectors);
 
-    // histogram
-    let hist = createHistogram(groupsDictionary["All"], 5);
-    hist.id = "histogram";
-    newContent.appendChild(hist);
-
     // add new content
     let referenceElement = document.getElementsByClassName("Results-header")[0]; // adding stuff to the page
     referenceElement.parentNode.insertBefore(newContent, referenceElement.nextSibling);
+
+    // update milestones
+    updateMilestones(milestonesDictionary, milestones);
+    let updateAddMilestone = document.getElementById("addNewMilestone");
+    updateAddMilestone.addEventListener("click", function(){
+        let toAdd = Number(document.getElementById("newMilestoneValue").value)
+        if (!milestones.includes(toAdd)) {
+            milestones.push(toAdd);
+        }
+        updateMilestones(milestonesDictionary, milestones);
+    })
 
     // update the group selector for summary statistics
     let updateOnclick = document.getElementById("groupSelector");
     updateOnclick.addEventListener("change", function(){updateSummary(updateOnclick.value, groupsDictionary)});
 
+    // Adding in histogram
+    var bodySelection = d3.select("#newContent");
+
+    var svgSelection = bodySelection.append("svg")
+    .attr("width", "100%")
+    .attr("height", "500px")
+    .attr("id", "newHist")
+    .style("background-color", "white");
+    
+    createHistogram(groupsDictionary["All"], 5);
+
     // update histogram group selector
     let updateHistGroup = document.getElementById("histGroupSelector");
     let updateHistBin = document.getElementById("histIntervalSelector");
-    updateHistGroup.addEventListener("change", function(){updateHistogram(groupsDictionary[updateHistGroup.value], Number(updateHistBin.value), document.getElementById("histogram"))});
-    updateHistBin.addEventListener("change", function(){updateHistogram(groupsDictionary[updateHistGroup.value], Number(updateHistBin.value), document.getElementById("histogram"))});
-
-    // update histogram response
-    updateHistResponse();
+    updateHistGroup.addEventListener("change", function(){createHistogram(groupsDictionary[updateHistGroup.value], Number(updateHistBin.value))});
+    updateHistBin.addEventListener("change", function(){createHistogram(groupsDictionary[updateHistGroup.value], Number(updateHistBin.value))});
 }
+
 main();
