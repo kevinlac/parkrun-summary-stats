@@ -364,18 +364,23 @@ function main() {
             if (!(numberOfRuns in milestonesDictionary)) {
                 milestonesDictionary[numberOfRuns] = [];
             }
-            // junior
+
+            // junior milestones first
+            let hasJuniorMilestone = false;
             for (let i = 0; i < juniorAges.length; i++) {
                 if (numberOfRuns === 10 && agegroup.indexOf(juniorAges[i]) !== -1) {
                     milestonesDictionary["Junior 10"].push(name);
+                    hasJuniorMilestone = true;
                 }
             }
             if (numberOfRuns === 1) {
                 countFirstEver++;
             }
-
-            milestonesDictionary[numberOfRuns].push(name);
-
+            
+            if (!hasJuniorMilestone) {
+                milestonesDictionary[numberOfRuns].push(name);
+            }
+            
             // achievements
             if (achievement === firstTimer) {
                 countFirstTimer++;
